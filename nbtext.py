@@ -3,6 +3,7 @@ import random
 import numpy.random
 import re
 from collections import Counter
+import inspect
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -240,6 +241,32 @@ def pure_urn(data):
         korpus_def = [data]
     return korpus_def
 
+####  N-Grams from fulltext updated
+
+def unigram(word, period=(1950, 2020), media = 'bok', ddk=None, topic=None, gender=None, publisher=None, lang=None, trans=None):
+    r = requests.get("https://api.nb.no/ngram/unigrams", params={
+        'word':word,
+        'ddk':ddk,
+        'topic':topic,
+        'gender':gender,
+        'publisher':publisher,
+        'lang':lang,
+        'trans':trans,
+        'period0':period[0],
+        'period1':period[1],
+        'media':media
+    })
+    return frame(dict(r.json()))
+
+def book_counts(period=(1800, 2050)):
+    r = requests.get("https://api.nb.no/ngram/book_counts", params={
+    
+        'period0':period[0],
+        'period1':period[1],
+    })
+    return frame(dict(r.json()))
+
+####    
 
 def difference(first, second, rf, rs, years=(1980, 2000),smooth=1, corpus='bok'):
     """Compute difference of difference (first/second)/(rf/rs)"""
@@ -292,18 +319,59 @@ def get_freq(urn, top=50, cutoff=3):
     r = requests.get("https://api.nb.no/ngram/urnfreq", json={'urn':urn, 'top':top, 'cutoff':cutoff})
     return Counter(dict(r.json()))
 
+####=============== GET URNS ==================##########
 
-def book_urn(author='%', title="%", ddk="%", subject="", period=(1100, 2020), gender="", limit=20 ):
+def book_urn(words = None, author = None, 
+             title = None, ddk  = None, subject = None, 
+             period=(1100, 2020), 
+             gender=None, 
+             lang = None, 
+             trans= None, 
+             limit=20 ):
     """Get URNs for books with metadata"""
-    return get_urn({
-        "author": author,
-        "title":title,
-        "ddk":ddk,
-        "subject":subject,
-        "year":period[0],
-        'next':period[1] - period[0],
-        "limit":limit
-    })
+    frame = inspect.currentframe()
+    args, _, _, values = inspect.getargvalues(frame)
+    query = {i:values[i] for i in args if values[i] != None and i != 'period'}
+    query['year'] = period[0]
+    query['next'] = period[1] - period[0]
+    return get_urn(query)
+
+
+def refine_book_urn(urns = None, words = None, author = None, 
+             title = None, ddk  = None, subject = None, period=(1100, 2020), gender=None, lang = None, trans= None, limit=20 ):
+
+    """Refine URNs for books with metadata"""
+    
+    # if empty urns nothing to refine
+    
+    if urns is None or urns == []:
+        return []
+    
+    # check if urns is a metadata list, and pick out first elements if that is the case
+    if isinstance(urns[0], list):
+        urns = [x[0] for x in urns]
+        
+    frame = inspect.currentframe()
+    args, _, _, values = inspect.getargvalues(frame)
+    query = {i:values[i] for i in args if values[i] != None and i != 'period' and i != 'urns'}
+    query['year'] = period[0]
+    query['next'] = period[1] - period[0]
+    #print(query)
+    return refine_urn(urns, query)
+
+def best_book_urn(word = None, author = None, 
+             title = None, ddk  = None, subject = None, period=(1100, 2020), gender=None, lang = None, trans= None, limit=20 ):
+    """Get URNs for books with metadata"""
+    
+    if word is None:
+        return []
+    
+    frame = inspect.currentframe()
+    args, _, _, values = inspect.getargvalues(frame)
+    query = {i:values[i] for i in args if values[i] != None and i != 'period' and i != 'word'}
+    query['year'] = period[0]
+    query['next'] = period[1] - period[0]
+    return get_best_urn(word, query)
 
 def get_urn(metadata=None):
     """Get urns from metadata"""
@@ -1114,6 +1182,7 @@ def check_words(urn, ordbag):
             break
     return True
 
+
 def nb_ngram(terms, corpus='bok', smooth=3, years=(1810, 2010), mode='relative'):
     df = ngram_conv(get_ngram(terms, corpus=corpus), smooth=smooth, years=years, mode=mode)
     df.index = df.index.astype(int)
@@ -1169,6 +1238,22 @@ def make_graph(words, lang='nob', cutoff=20, leaves=0):
 
     return G
 
+def urn_concordance(urns = None, word = None, size = 5, before = None, after = None ):
+    if urns is None or word is None:
+        return []
+    frame = inspect.currentframe()
+    args, _, _, values = inspect.getargvalues(frame)
+    query = {i:values[i] for i in args if values[i] != None and i != 'word'}
+    return get_urnkonk(word, query)
+    
+def concordance(word = None, corpus='bok', author=None, title=None, subtitle=None, lang=None, ddk=None, subject=None,
+               yearfrom = None, yearto=None, before=None, after=None, size=5, gender=None, offset=None, kind='html'):
+    if word == None:
+        return []
+    frame = inspect.currentframe()
+    args, _, _, values = inspect.getargvalues(frame)
+    query = {i:values[i] for i in args if values[i] != None and i != 'word'  and i != 'kind'}
+    return get_konk(word, query, kind=kind)
 
 def get_konk(word, params=None, kind='html'):
     if params is None:
